@@ -2,7 +2,7 @@ use std::sync::mpsc;
 // use std::{os::windows::prelude::OsStrExt, iter::once, ptr::null};
 // use windows_sys::{core::*, Win32::{Foundation::*, Graphics::Gdi::ValidateRect, UI::WindowsAndMessaging::{FindWindowW, GetWindowRect}, Foundation::{HWND, RECT}}};
 
-use macroquad::{input::{is_key_down, is_key_pressed, is_key_released, KeyCode}, math::Vec2, shapes::DrawRectangleParams, window::{clear_background, next_frame, screen_height, screen_width, Conf}};
+use macroquad::{input::{is_key_down, is_key_pressed, is_key_released, KeyCode}, math::Vec2, shapes::DrawRectangleParams, text::draw_text, time::get_frame_time, window::{clear_background, next_frame, screen_height, screen_width, Conf}};
 use rapier2d::prelude::{nalgebra::{vector, Vector2}, ActiveEvents, CCDSolver, ChannelEventCollector, ColliderBuilder, ColliderSet, CollisionEvent, CollisionEventFlags, DefaultBroadPhase, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet, NarrowPhase, PhysicsPipeline, RigidBodyBuilder, RigidBodySet};
 
 mod colarc;
@@ -20,6 +20,13 @@ const CHARACTER_SIZE: f32 = 40.0;
 // 1 meter is 50 pixels
 const PHYSICS_SCALE: f32 = 50.0;
 const GRAVITY: Vector2<f32> = vector![0.0, -9.82];
+
+enum GameState {
+    MainMenu,
+    Playing,
+    Paused,
+    GameOver,
+}
 
 fn conf() -> Conf {
     #[allow(clippy::cast_possible_truncation)]
@@ -61,7 +68,7 @@ fn conf() -> Conf {
 // }
 
 #[macroquad::main(conf)]
-async fn main() {
+async fn main() -> Result<(), macroquad::Error> {
 
     println!("width: {}", screen_width());
     println!("height: {}", screen_height());
@@ -108,32 +115,91 @@ async fn main() {
     let (contact_force_send, _contact_force_recv) = mpsc::channel();
     let event_handler = ChannelEventCollector::new(collision_send, contact_force_send);
 
+    let mut game_state = GameState::MainMenu;
+    let mut jump_time: f32 = 0.0;
+
     loop {
         if is_key_released(KeyCode::Escape) {
-            break;
+            game_state = GameState::GameOver;
         }
         if is_key_released(KeyCode::Key1) {
-            break;
+            game_state = GameState::MainMenu;
         }
         if is_key_released(KeyCode::Key2) {
-            break;
+            game_state = GameState::Playing;
         }
-        if is_key_pressed(KeyCode::Up) { // TODO: Double jump
-            cubicle.add_user_input(vector![0.0, cubicle.jump], &mut rigid_body_set);
+        if is_key_released(KeyCode::Key3) {
+            game_state = GameState::Paused;
         }
-        if is_key_down(KeyCode::Down) {
-            // TODO: Couch for higher jump;
-            println!("key_pressed(KeyCode::Down");
+        if is_key_released(KeyCode::Key4) {
+            game_state = GameState::GameOver;
         }
-        // TODO: Continous movement and time based force
-        // TODO: Only move when still and on the ground
-        // if is_key_down(KeyCode::Left) {
-        if is_key_pressed(KeyCode::Left) {
-            println!("key_pressed(KeyCode::Left");
-            cubicle.add_user_input(vector![-cubicle.speed, cubicle.speed], &mut rigid_body_set);
-        }
-        if is_key_pressed(KeyCode::Right) {
-            cubicle.add_user_input(vector![cubicle.speed, cubicle.speed], &mut rigid_body_set);
+
+        match game_state {
+            GameState::MainMenu => {},
+            GameState::Playing => {
+                let delta_time = get_frame_time();
+                if is_key_pressed(KeyCode::Up) { // TODO: Double jump
+                    cubicle.add_user_input(vector![0.0, cubicle.jump], &mut rigid_body_set);
+                }
+                
+                if is_key_down(KeyCode::Down) {
+                    // TODO: Couch for higher jump;
+                    if jump_time < 0.15 {
+                        jump_time = jump_time + delta_time.clone();
+                        println!("key_down(Down d:{}, j:{}", delta_time, jump_time);
+                    }
+                }
+                if is_key_released(KeyCode::Down) {
+                    // TODO: Couch for higher jump;
+                    println!("key_released(Down d:{}, j:{}", delta_time, jump_time);
+                    cubicle.add_user_input(vector![0.0, cubicle.jump * jump_time * 10.0], &mut rigid_body_set);
+                    jump_time = 0.0;
+                }
+                // TODO: Continous movement and time based force
+                // TODO: Only move when still and on the ground
+                // if is_key_down(KeyCode::Left) {
+                if is_key_pressed(KeyCode::Left) {
+                    println!("key_pressed(KeyCode::Left");
+                    cubicle.add_user_input(vector![-cubicle.speed, cubicle.speed], &mut rigid_body_set);
+                }
+                if is_key_pressed(KeyCode::Right) {
+                    cubicle.add_user_input(vector![cubicle.speed, cubicle.speed], &mut rigid_body_set);
+                }
+
+                physics_pipeline.step(
+                    &GRAVITY, 
+                    &integration_parameters, 
+                    &mut island_manager, 
+                    &mut broad_phase, 
+                    &mut narrow_phase, 
+                    &mut rigid_body_set, 
+                    &mut collider_set, 
+                    &mut impulse_joint_set, 
+                    &mut multibody_joint_set, 
+                    &mut ccd_solver, 
+                    &physics_hooks, 
+                    &event_handler
+                );
+
+                cubicle.update(&rigid_body_set);
+
+                while let Ok(collision_event) = collision_recv.try_recv() {
+                    if let CollisionEvent::Started(
+                        _collider_handle_1, 
+                        _collider_handle_2, 
+                        CollisionEventFlags::SENSOR,
+                    ) = collision_event
+                    {
+                        println!("paused = true");
+                    }
+                }
+            },
+            // TODO: pause game on window resize
+            GameState::Paused => {},
+            GameState::GameOver => {
+                std::process::exit(0);
+            },
         }
 
         clear_background(colarc::GRAY_GUNMETAL);
@@ -142,36 +208,7 @@ async fn main() {
         }
 
         cubicle.draw();
-
-        physics_pipeline.step(
-            &GRAVITY, 
-            &integration_parameters, 
-            &mut island_manager, 
-            &mut broad_phase, 
-            &mut narrow_phase, 
-            &mut rigid_body_set, 
-            &mut collider_set, 
-            &mut impulse_joint_set, 
-            &mut multibody_joint_set, 
-            &mut ccd_solver, 
-            &physics_hooks, 
-            &event_handler
-        );
-
-        cubicle.update(&rigid_body_set);
-
-        while let Ok(collision_event) = collision_recv.try_recv() {
-            if let CollisionEvent::Started(
-                _collider_handle_1, 
-                _collider_handle_2, 
-                CollisionEventFlags::SENSOR,
-            ) = collision_event
-            {
-                println!("paused = true");
-            }
-        }
-
-        // TODO: pause game on window resize
+        draw_text("1: Menu\n2: Play\n3: Paus\n4: Quit", 20.0, 35.0, 25.0, colarc::WHITE_SNOW);
         next_frame().await;
     }
 }

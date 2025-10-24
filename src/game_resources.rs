@@ -44,7 +44,14 @@ impl ShapeRect {
 
     pub fn add_user_input(&mut self, user_input: Vector2<f32>, rigid_body_set: &mut RigidBodySet) {
         let body = rigid_body_set.get_mut(self.physics_handle.unwrap()).unwrap();
-        body.apply_impulse(vector![user_input.x, user_input.y], true);
+        
+        let mut jump = user_input.y;
+        println!("jump: {}", body.vels().as_vector());
+        if body.vels().as_vector().y.abs() > 0.5 {
+            jump = 0.0;
+        }
+
+        body.apply_impulse(vector![user_input.x, jump], true);
     }
 
     pub fn update(&mut self, rigid_body_set: &RigidBodySet) {

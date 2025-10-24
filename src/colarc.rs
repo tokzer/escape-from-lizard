@@ -42,3 +42,10 @@ pub const YELLOW_SUNGLOW: Color = Color {
     b: 64.0 / 255.0,
     a: 1.0,
 };
+
+pub const WHITE_SNOW: Color = Color {
+    r: 255.0 / 255.0,
+    g: 255.0 / 255.0,
+    b: 255.0 / 255.0,
+    a: 1.0,
+};
