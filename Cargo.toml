@@ -1,0 +1,10 @@
+[package]
+name = "escape-from-lizard"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+macroquad = "0.4"
+nalgebra = "0.34"
+rapier2d = {version = "0.30", features = ["simd-stable"]}
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics", "Win32_UI", "Win32_Graphics_Gdi"] }
